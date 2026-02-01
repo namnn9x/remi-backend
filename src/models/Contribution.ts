@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IContribution extends Document {
   memoryBookId: mongoose.Types.ObjectId;
+  userId: mongoose.Types.ObjectId; // User who made this contribution
   photoId: string; // ID của photo (có thể là filename hoặc ObjectId)
   url: string; // URL để load ảnh: /api/images/:filename
   note: string;
@@ -13,6 +14,12 @@ const ContributionSchema = new Schema<IContribution>({
   memoryBookId: { 
     type: Schema.Types.ObjectId, 
     ref: 'MemoryBook',
+    required: true,
+    index: true
+  },
+  userId: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
     required: true,
     index: true
   },

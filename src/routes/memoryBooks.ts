@@ -6,7 +6,8 @@ import {
   getMemoryBookByContributeId,
   createMemoryBook,
   updateMemoryBook,
-  deleteMemoryBook
+  deleteMemoryBook,
+  getMyMemoryBooks
 } from '../controllers/memoryBookController';
 import { authenticate } from '../middleware/auth';
 import contributionRoutes from './contributions';
@@ -19,6 +20,9 @@ router.get('/contribute/:contributeId', getMemoryBookByContributeId);
 
 // Protected routes (require authentication)
 router.use(authenticate); // Apply auth middleware to all routes below
+
+// Get my memory books (as leader and contributor)
+router.get('/my', getMyMemoryBooks);
 
 // Main CRUD routes
 router.route('/')

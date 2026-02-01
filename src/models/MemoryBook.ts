@@ -33,6 +33,7 @@ export interface IMemoryBook extends Document {
   shareId: string; // Unique public ID for sharing
   contributeId: string; // Unique public ID for contributing
   userId: mongoose.Types.ObjectId; // Owner of the memory book
+  isLeader: boolean; // True if user is the creator/leader of this memory book
   createdAt: Date;
   updatedAt: Date;
 }
@@ -66,6 +67,7 @@ const MemoryBookSchema = new Schema<IMemoryBook>({
   shareId: { type: String, required: true, unique: true, index: true },
   contributeId: { type: String, required: true, unique: true, index: true },
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  isLeader: { type: Boolean, default: false, index: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

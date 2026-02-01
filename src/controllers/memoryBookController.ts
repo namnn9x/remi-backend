@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { MemoryBook, IMemoryBook } from '../models/MemoryBook';
+import { Contribution } from '../models/Contribution';
 import { AppError } from '../middleware/errorHandler';
 import { generatePublicIds } from '../utils/idGenerator';
 import cloudinary from '../config/cloudinary';
@@ -32,7 +33,8 @@ const transformMemoryBook = (book: IMemoryBook) => {
     createdAt: bookObj.createdAt,
     updatedAt: bookObj.updatedAt,
     shareId: bookObj.shareId,
-    contributeId: bookObj.contributeId
+    contributeId: bookObj.contributeId,
+    isLeader: bookObj.isLeader
   };
 };
 
@@ -71,7 +73,8 @@ export const getAllMemoryBooks = async (
       pages: book.pages,
       createdAt: book.createdAt,
       shareId: book.shareId,
-      contributeId: book.contributeId
+      contributeId: book.contributeId,
+      isLeader: book.isLeader
     }));
 
     res.status(200).json({
@@ -187,7 +190,8 @@ export const createMemoryBook = async (
       pages: [],
       shareId,
       contributeId,
-      userId: user._id
+      userId: user._id,
+      isLeader: true // User who creates the memory book is the leader
     });
 
     const savedMemoryBook = await memoryBook.save();
@@ -207,7 +211,8 @@ export const createMemoryBook = async (
           pages: [],
           shareId,
           contributeId,
-          userId: user._id
+          userId: user._id,
+          isLeader: true // User who creates the memory book is the leader
         });
         const savedMemoryBook = await memoryBook.save();
         res.status(201).json(transformMemoryBook(savedMemoryBook));
@@ -302,6 +307,86 @@ export const deleteMemoryBook = async (
 
     res.status(200).json({
       message: 'Memory book deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get my memory books (both as leader and as contributor)
+export const getMyMemoryBooks = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = (req as any).user;
+    if (!user) {
+      const err: AppError = new Error('Unauthorized');
+      err.statusCode = 401;
+      err.errorCode = 'UNAUTHORIZED';
+      return next(err);
+    }
+
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    // Get memory books where user is leader
+    const [myBooksData, myBooksTotal] = await Promise.all([
+      MemoryBook.find({ userId: user._id, isLeader: true })
+        .sort({ createdAt: -1 })
+        .skip(offset)
+        .limit(limit)
+        .lean(),
+      MemoryBook.countDocuments({ userId: user._id, isLeader: true })
+    ]);
+
+    // Get memory book IDs where user has contributed
+    const userContributions = await Contribution.find({ userId: user._id })
+      .select('memoryBookId')
+      .lean();
+
+    const memoryBookIds = [...new Set(userContributions.map((contrib: any) => contrib.memoryBookId))];
+
+    // Get memory books where user contributed (excluding ones they are leader of)
+    const [contributedBooksData, contributedBooksTotal] = await Promise.all([
+      MemoryBook.find({
+        _id: { $in: memoryBookIds },
+        userId: { $ne: user._id } // Exclude books where user is the owner
+      })
+        .sort({ createdAt: -1 })
+        .skip(offset)
+        .limit(limit)
+        .lean(),
+      MemoryBook.countDocuments({
+        _id: { $in: memoryBookIds },
+        userId: { $ne: user._id }
+      })
+    ]);
+
+    const transformBook = (book: any) => ({
+      id: book._id.toString(),
+      name: book.name,
+      type: book.type,
+      pages: book.pages,
+      createdAt: book.createdAt,
+      updatedAt: book.updatedAt,
+      shareId: book.shareId,
+      contributeId: book.contributeId,
+      isLeader: book.isLeader || false
+    });
+
+    res.status(200).json({
+      data: {
+        myBooks: myBooksData.map(transformBook),
+        contributedBooks: contributedBooksData.map(transformBook)
+      },
+      total: {
+        myBooks: myBooksTotal,
+        contributedBooks: contributedBooksTotal
+      },
+      limit,
+      offset
     });
   } catch (error) {
     next(error);

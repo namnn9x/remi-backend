@@ -26,6 +26,14 @@ export const submitContributions = async (
     const files = req.files as Express.Multer.File[];
     const notes = req.body.notes ? (Array.isArray(req.body.notes) ? req.body.notes : [req.body.notes]) : [];
     const prompts = req.body.prompts ? (Array.isArray(req.body.prompts) ? req.body.prompts : [req.body.prompts]) : [];
+    const user = (req as any).user;
+
+    if (!user) {
+      const err: AppError = new Error('Unauthorized');
+      err.statusCode = 401;
+      err.errorCode = 'UNAUTHORIZED';
+      return next(err);
+    }
 
     // Validate memory book exists
     const memoryBook = await MemoryBook.findById(id);
@@ -81,6 +89,7 @@ export const submitContributions = async (
         
         const contribution = new Contribution({
           memoryBookId: id,
+          userId: user._id,
           photoId,
           url: cloudinaryUrl,
           note: notes[index] || '',

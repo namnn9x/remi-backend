@@ -1,47 +1,9 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { uploadImage, getImage, deleteImage } from '../controllers/uploadController';
+import { upload, fileFilter } from '../config/cloudinary';
 
 const router = express.Router();
-
-// Create uploads directory if it doesn't exist
-const uploadDir = process.env.UPLOAD_DIR || './uploads';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Configure multer for file upload
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    // Hash filename for security and uniqueness
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, 'img-' + uniqueSuffix + ext);
-  }
-});
-
-const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  // Accept only image files
-  const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
-  if (allowedMimes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Chỉ chấp nhận file ảnh (JPEG, PNG, WebP, GIF)'));
-  }
-};
-
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB
-  }
-});
 
 // Error handler for multer
 const handleMulterError = (err: any, req: any, res: any, next: any) => {

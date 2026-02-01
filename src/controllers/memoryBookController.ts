@@ -2,8 +2,24 @@ import { Request, Response, NextFunction } from 'express';
 import { MemoryBook, IMemoryBook } from '../models/MemoryBook';
 import { AppError } from '../middleware/errorHandler';
 import { generatePublicIds } from '../utils/idGenerator';
-import fs from 'fs';
-import path from 'path';
+import cloudinary from '../config/cloudinary';
+
+// Helper function to extract public_id from Cloudinary URL
+const extractPublicId = (url: string): string | null => {
+  try {
+    // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{public_id}.{ext}
+    // or: https://res.cloudinary.com/{cloud_name}/image/upload/{public_id}.{ext}
+    // or old format: /api/images/filename (backward compatibility)
+    if (url.startsWith('http')) {
+      const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
+      return match ? match[1] : null;
+    }
+    // For old local URLs, return null (they won't exist in Cloudinary)
+    return null;
+  } catch (error) {
+    return null;
+  }
+};
 
 // Helper function to transform memory book to API response format
 const transformMemoryBook = (book: IMemoryBook) => {
@@ -29,14 +45,23 @@ export const getAllMemoryBooks = async (
   try {
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
+    
+    // Get user from request (set by auth middleware)
+    const user = (req as any).user;
+    if (!user) {
+      const err: AppError = new Error('Unauthorized');
+      err.statusCode = 401;
+      err.errorCode = 'UNAUTHORIZED';
+      return next(err);
+    }
 
     const [data, total] = await Promise.all([
-      MemoryBook.find()
+      MemoryBook.find({ userId: user._id })
         .sort({ createdAt: -1 })
         .skip(offset)
         .limit(limit)
         .lean(),
-      MemoryBook.countDocuments()
+      MemoryBook.countDocuments({ userId: user._id })
     ]);
 
     const transformedData = data.map((book: any) => ({
@@ -68,10 +93,12 @@ export const getMemoryBookById = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const memoryBook = await MemoryBook.findById(id);
+    const user = (req as any).user;
+    
+    const memoryBook = await MemoryBook.findOne({ _id: id, userId: user._id });
 
     if (!memoryBook) {
-      const err: AppError = new Error('Không tìm thấy memory book');
+      const err: AppError = new Error('Không tìm thấy memory book hoặc không có quyền truy cập');
       err.statusCode = 404;
       err.errorCode = 'MEMORY_BOOK_NOT_FOUND';
       return next(err);
@@ -142,6 +169,7 @@ export const createMemoryBook = async (
 ): Promise<void> => {
   try {
     const { name, type } = req.body;
+    const user = (req as any).user;
 
     if (!name || !type) {
       const err: AppError = new Error('Name and type are required');
@@ -158,7 +186,8 @@ export const createMemoryBook = async (
       type,
       pages: [],
       shareId,
-      contributeId
+      contributeId,
+      userId: user._id
     });
 
     const savedMemoryBook = await memoryBook.save();
@@ -170,13 +199,15 @@ export const createMemoryBook = async (
       // Retry with new IDs
       try {
         const { name, type } = req.body;
+        const user = (req as any).user;
         const { shareId, contributeId } = generatePublicIds();
         const memoryBook = new MemoryBook({
           name,
           type,
           pages: [],
           shareId,
-          contributeId
+          contributeId,
+          userId: user._id
         });
         const savedMemoryBook = await memoryBook.save();
         res.status(201).json(transformMemoryBook(savedMemoryBook));
@@ -198,11 +229,12 @@ export const updateMemoryBook = async (
   try {
     const { id } = req.params;
     const { name, type, pages } = req.body;
+    const user = (req as any).user;
 
-    const memoryBook = await MemoryBook.findById(id);
+    const memoryBook = await MemoryBook.findOne({ _id: id, userId: user._id });
 
     if (!memoryBook) {
-      const err: AppError = new Error('Không tìm thấy memory book');
+      const err: AppError = new Error('Không tìm thấy memory book hoặc không có quyền truy cập');
       err.statusCode = 404;
       err.errorCode = 'MEMORY_BOOK_NOT_FOUND';
       return next(err);
@@ -228,40 +260,42 @@ export const deleteMemoryBook = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const memoryBook = await MemoryBook.findById(id);
+    const user = (req as any).user;
+    
+    const memoryBook = await MemoryBook.findOne({ _id: id, userId: user._id });
 
     if (!memoryBook) {
-      const err: AppError = new Error('Không tìm thấy memory book');
+      const err: AppError = new Error('Không tìm thấy memory book hoặc không có quyền truy cập');
       err.statusCode = 404;
       err.errorCode = 'MEMORY_BOOK_NOT_FOUND';
       return next(err);
     }
 
-    // Extract all image filenames from pages
-    const imageFilenames: string[] = [];
+    // Extract all image URLs from pages and delete from Cloudinary
+    const imageUrls: string[] = [];
     memoryBook.pages.forEach(page => {
       page.photos.forEach(photo => {
-        // Extract filename from URL like /api/images/filename.jpg
-        const urlParts = photo.url.split('/');
-        const filename = urlParts[urlParts.length - 1];
-        if (filename) {
-          imageFilenames.push(filename);
+        if (photo.url) {
+          imageUrls.push(photo.url);
         }
       });
     });
 
-    // Delete associated images
-    const uploadDir = process.env.UPLOAD_DIR || './uploads';
-    imageFilenames.forEach(filename => {
-      const filePath = path.join(uploadDir, filename);
-      if (fs.existsSync(filePath)) {
-        try {
-          fs.unlinkSync(filePath);
-        } catch (err) {
-          console.error(`Failed to delete image ${filename}:`, err);
-        }
-      }
-    });
+    // Delete associated images from Cloudinary
+    if (imageUrls.length > 0) {
+      await Promise.all(
+        imageUrls.map(async (url) => {
+          const publicId = extractPublicId(url);
+          if (publicId) {
+            try {
+              await cloudinary.uploader.destroy(publicId);
+            } catch (err) {
+              console.error(`Failed to delete image from Cloudinary (${url}):`, err);
+            }
+          }
+        })
+      );
+    }
 
     // Delete memory book
     await MemoryBook.findByIdAndDelete(id);

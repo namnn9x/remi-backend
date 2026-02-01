@@ -32,6 +32,7 @@ export interface IMemoryBook extends Document {
   pages: IPhotoPage[];
   shareId: string; // Unique public ID for sharing
   contributeId: string; // Unique public ID for contributing
+  userId: mongoose.Types.ObjectId; // Owner of the memory book
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,6 +65,7 @@ const MemoryBookSchema = new Schema<IMemoryBook>({
   pages: [PhotoPageSchema],
   shareId: { type: String, required: true, unique: true, index: true },
   contributeId: { type: String, required: true, unique: true, index: true },
+  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

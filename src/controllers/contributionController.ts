@@ -4,36 +4,11 @@ import { MemoryBook } from '../models/MemoryBook';
 import { AppError } from '../middleware/errorHandler';
 import crypto from 'crypto';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
+import { cloudinaryStorage, fileFilter } from '../config/cloudinary';
 
-// Configure multer for multiple files
-const uploadDir = process.env.UPLOAD_DIR || './uploads';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, 'contrib-' + uniqueSuffix + ext);
-  }
-});
-
-const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  if (file.mimetype.startsWith('image/')) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only image files are allowed'));
-  }
-};
-
+// Configure multer for multiple files with Cloudinary
 export const uploadMultiple = multer({
-  storage,
+  storage: cloudinaryStorage,
   fileFilter,
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB
@@ -95,10 +70,19 @@ export const submitContributions = async (
     const contributions = await Promise.all(
       files.map(async (file, index) => {
         const photoId = crypto.randomBytes(16).toString('hex');
+        
+        // Get Cloudinary URL from file object
+        const fileWithCloudinary = file as any;
+        const cloudinaryUrl = fileWithCloudinary.path || fileWithCloudinary.secure_url || fileWithCloudinary.url;
+        
+        if (!cloudinaryUrl) {
+          throw new Error('Failed to get Cloudinary URL for uploaded file');
+        }
+        
         const contribution = new Contribution({
           memoryBookId: id,
           photoId,
-          url: `/api/images/${file.filename}`,
+          url: cloudinaryUrl,
           note: notes[index] || '',
           prompt: prompts[index] || '',
           contributedAt: new Date()

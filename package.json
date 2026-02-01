@@ -19,7 +19,9 @@
     "cors": "^2.8.5",
     "multer": "^1.4.5-lts.1",
     "jsonwebtoken": "^9.0.2",
-    "bcrypt": "^5.1.1"
+    "bcrypt": "^5.1.1",
+    "cloudinary": "^1.41.0",
+    "multer-storage-cloudinary": "^4.0.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

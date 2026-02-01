@@ -8,6 +8,7 @@ Backend API server cho dự án Remi - Memory Book application.
 - **Express.js** - Web framework
 - **MongoDB** + **Mongoose** - Database
 - **Multer** - File upload
+- **Cloudinary** - Cloud image storage
 - **CORS** - Cross-origin resource sharing
 
 ## Setup
@@ -25,6 +26,7 @@ Tạo file `.env` trong thư mục root:
 ```env
 # Server Configuration
 PORT=3000
+NODE_ENV=development
 
 # MongoDB Configuration
 MONGODB_URI=mongodb://localhost:27017/remi
@@ -32,13 +34,16 @@ MONGODB_URI=mongodb://localhost:27017/remi
 # JWT Configuration (nếu cần authentication)
 JWT_SECRET=your-secret-key-change-this-in-production
 
-# File Upload Configuration
-UPLOAD_DIR=./uploads
-MAX_FILE_SIZE=5242880
+# Cloudinary Configuration
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
 
 # CORS Configuration
 FRONTEND_URL=http://localhost:5173
 ```
+
+**Lưu ý:** Bạn cần tạo tài khoản Cloudinary tại [cloudinary.com](https://cloudinary.com) và lấy các thông tin credentials từ dashboard.
 
 ### 3. Đảm bảo MongoDB đang chạy
 
@@ -76,8 +81,9 @@ DELETE /api/memory-books/:id      # Xóa memory book
 
 ### Upload
 ```
-POST   /api/upload                # Upload ảnh
-GET    /api/images/:filename      # Lấy ảnh
+POST   /api/upload                # Upload ảnh (trả về Cloudinary URL)
+GET    /api/images/:filename      # Lấy ảnh (deprecated - ảnh được serve trực tiếp từ Cloudinary)
+DELETE /api/images/:filename      # Xóa ảnh từ Cloudinary
 ```
 
 ## Scripts
@@ -94,7 +100,8 @@ remi-backend/
 ├── src/
 │   ├── index.ts              # Entry point
 │   ├── config/
-│   │   └── database.ts       # MongoDB connection
+│   │   ├── database.ts       # MongoDB connection
+│   │   └── cloudinary.ts     # Cloudinary configuration
 │   ├── models/
 │   │   └── MemoryBook.ts     # MemoryBook model
 │   ├── routes/
@@ -105,7 +112,6 @@ remi-backend/
 │   │   └── uploadController.ts
 │   └── middleware/
 │       └── errorHandler.ts   # Error handling
-├── uploads/                  # Thư mục lưu ảnh
 ├── package.json
 ├── tsconfig.json
 └── .env
@@ -121,7 +127,8 @@ CORS đã được cấu hình để cho phép frontend truy cập.
 
 ## Notes
 
-- File upload được lưu local trong thư mục `uploads/`
-- Có thể chuyển sang cloud storage (AWS S3, Cloudinary) sau
+- File upload được lưu trên **Cloudinary** (cloud storage)
+- Ảnh được tự động optimize và transform khi upload
 - MongoDB connection tự động reconnect khi disconnect
+- URL trả về từ API là Cloudinary URL, có thể sử dụng trực tiếp trong frontend
 # remi-backend
